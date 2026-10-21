@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { cycleInfo } from '../../domain/cycle'
+import { mergeDraft, touch } from '../../domain/draft'
 import { fmtKg, fmtLong, num, todayStr } from '../../domain/format'
 import { exerciseHistory, rirCaption, trainingWeek } from '../../domain/progression'
 import { lastLine, nextType, rec } from '../../domain/rec'
@@ -47,20 +48,58 @@ export function TodayScreen() {
 
   const [draft, setDraft] = useState<Draft>({ date: today, feel: 'ok' })
   const [picked, setPicked] = useState<WorkoutType | null>(null)
+  const [clearArm, setClearArm] = useState(false)
+  /** Что изменено в этой сессии — чтобы загруженный черновик это не перетёр. */
+  const touched = useRef<Set<string>>(new Set())
+  /** Отложенная запись черновика: пишем не чаще раза в 250 мс. */
+  const timer = useRef<number | undefined>(undefined)
+  const pending = useRef<Draft | null>(null)
+
+  /** Записать последнее значение черновика немедленно. */
+  const flushDraft = (): void => {
+    window.clearTimeout(timer.current)
+    timer.current = undefined
+    if (pending.current) {
+      // Черновик — вспомогательные данные: ошибка записи не должна ломать экран.
+      void saveDraft(pending.current).catch(() => {})
+      pending.current = null
+    }
+  }
 
   useEffect(() => {
     let alive = true
     void getDraft(today).then((d) => {
-      if (alive) setDraft(d)
+      if (!alive) return
+      // Загруженный черновик не перетирает введённое в этой сессии.
+      setDraft((cur) => mergeDraft(cur, d, touched.current))
     })
     return () => {
       alive = false
+      flushDraft()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today])
+
+  // Последнее значение черновика не должно потеряться при уходе со страницы.
+  useEffect(() => {
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'hidden') flushDraft()
+    }
+    const onPageHide = (): void => flushDraft()
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pagehide', onPageHide)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', onPageHide)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const update = (next: Draft): void => {
     setDraft(next)
-    void saveDraft(next)
+    pending.current = next
+    window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(() => flushDraft(), 250)
   }
 
   const type: WorkoutType = picked ?? nextType(sessions)
@@ -78,9 +117,13 @@ export function TodayScreen() {
   const firstDate = sessions.length ? [...sessions].map((s) => s.date).sort()[0] : null
   const week = trainingWeek(firstDate, today)
 
-  const setFeel = (v: Feel): void => update({ ...draft, feel: v })
+  const setFeel = (v: Feel): void => {
+    touched.current.add(touch.feel)
+    update({ ...draft, feel: v })
+  }
 
   const setSetValue = (exId: string, i: number, field: 'w' | 'r', value: string): void => {
+    touched.current.add(touch.set(type, exId, i, field))
     const cur: DraftType = dt ?? { ex: {}, note: '' }
     const arr = [...(cur.ex[exId] ?? [])]
     const item = { ...(arr[i] ?? {}) }
@@ -90,11 +133,18 @@ export function TodayScreen() {
   }
 
   const setNote = (value: string): void => {
+    touched.current.add(touch.note(type))
     const cur: DraftType = dt ?? { ex: {}, note: '' }
     update({ ...draft, [type]: { ...cur, note: value } })
   }
 
+  /** Очистка — со подтверждением вторым нажатием. */
   const clearInputs = (): void => {
+    if (!clearArm) {
+      setClearArm(true)
+      return
+    }
+    setClearArm(false)
     const next = { ...draft }
     delete next[type]
     update(next)
@@ -102,6 +152,8 @@ export function TodayScreen() {
   }
 
   const saveWorkout = async (): Promise<void> => {
+    // Последнее введённое значение должно попасть в базу до сохранения тренировки.
+    flushDraft()
     const ex: Record<string, SetEntry[]> = {}
     let count = 0
     for (const d of def.ex) {
@@ -143,6 +195,7 @@ export function TodayScreen() {
     const next = { ...draft }
     delete next[type]
     update(next)
+    flushDraft()
     setPicked(type === 'A' ? 'B' : 'A')
     toast('Тренировка сохранена')
     window.scrollTo(0, 0)
@@ -175,10 +228,7 @@ export function TodayScreen() {
         ))}
       </div>
 
-      <p className="muted small" style={{ marginTop: 12 }}>
-        Разминка 5 минут + 1–2 подхода приседа с пустым грифом. Вес подставлен по рекомендации — меняйте, если сделали
-        другой.
-      </p>
+      <p className="muted warmup">Разминка: 5 мин + 1–2 подхода приседа с пустым грифом</p>
 
       {def.ex.map((d) => {
         const history = exerciseHistory(sessions, type, d.id)
@@ -195,7 +245,9 @@ export function TodayScreen() {
               {d.sets} × {d.lo}–{d.hi} · {d.rest}
             </div>
             {last && <div className="ex-last">{lastLine(d, last)}</div>}
-            <div className={`rec ${r.tone}`}>{r.text}</div>
+            {(r.tone !== 'same' || r.text.includes('если сегодня легко')) && (
+              <div className={`rec ${r.tone}`}>{r.text}</div>
+            )}
             <div className="goal">{r.target}</div>
             <div className="sets">
               <span className="h" />
@@ -218,7 +270,8 @@ export function TodayScreen() {
                     <span className="set-n">{i + 1}</span>
                     <input
                       type="text"
-                      inputMode="decimal"
+                      inputMode={d.kind === 'band' ? 'text' : 'decimal'}
+                      autoCapitalize={d.kind === 'band' ? 'none' : undefined}
                       autoComplete="off"
                       placeholder={d.kind === 'band' ? 'цвет/сила' : 'кг'}
                       aria-label={`Подход ${i + 1}, ${d.kind === 'band' ? 'резинка' : 'вес'}`}
@@ -243,21 +296,26 @@ export function TodayScreen() {
         )
       })}
 
-      <div className="field">
-        <label htmlFor="note">Заметка</label>
-        <textarea
-          id="note"
-          placeholder="Например: болела поясница, присед шёл легко"
-          value={dt?.note ?? ''}
-          onChange={(e) => setNote(e.target.value)}
-        />
+      <div className="note-card">
+        <div className="field">
+          <label htmlFor="note">Заметка</label>
+          <textarea
+            id="note"
+            placeholder="Например: болела поясница, присед шёл легко"
+            value={dt?.note ?? ''}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </div>
+        <button type="button" className="linkbtn clear-btn" onClick={clearInputs}>
+          {clearArm ? 'Нажмите ещё раз, чтобы очистить' : 'Очистить введённое'}
+        </button>
       </div>
-      <button type="button" className="btn" onClick={() => void saveWorkout()}>
-        Сохранить тренировку
-      </button>
-      <button type="button" className="linkbtn" onClick={clearInputs}>
-        Очистить введённое
-      </button>
+
+      <div className="save-bar">
+        <button type="button" className="btn" onClick={() => void saveWorkout()}>
+          Сохранить тренировку
+        </button>
+      </div>
     </main>
   )
 }

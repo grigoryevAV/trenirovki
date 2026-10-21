@@ -80,11 +80,9 @@ export async function getDraft(date: string): Promise<Draft> {
 
 export async function saveDraft(draft: Draft): Promise<void> {
   const row: DraftRow = { id: draft.date, ...draft }
-  await db.transaction('rw', db.drafts, async () => {
-    await db.drafts.put(row)
-    // Черновик живёт только до конца дня — записи за прошлые дни удаляются.
-    await db.drafts.toCollection().filter((d) => d.id !== draft.date).delete()
-  })
+  await db.drafts.put(row)
+  // Черновик живёт только до конца дня — записи за прошлые дни удаляются.
+  await db.drafts.where('id').notEqual(draft.date).delete()
 }
 
 /** Убирает введённое по одной тренировке (после сохранения). */

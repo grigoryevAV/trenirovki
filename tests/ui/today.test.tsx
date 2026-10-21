@@ -16,6 +16,14 @@ beforeEach(async () => {
   window.location.hash = '#/today'
 })
 
+/** Тренировки А с приседанием: по одной на каждый набор повторений. */
+async function insertSquatSessions(reps: number[][]): Promise<void> {
+  const base = { date: today, type: 'A' as const, cycleDay: 6, phase: 'fol' as const, mode: 'progress' as const, feel: 'ok' as const, note: '' }
+  for (let i = 0; i < reps.length; i++) {
+    await db.sessions.put({ ...base, id: `s${i + 1}`, ts: i + 1, ex: { squat: reps[i].map((r) => ({ w: 40, r })) } })
+  }
+}
+
 describe('экран «Сегодня»', () => {
   it('сохранённая тренировка появляется в «Истории»', async () => {
     render(<App />)
@@ -96,6 +104,76 @@ describe('цикл скрыт на основных экранах', () => {
     for (const t of PHASE_TEXTS) expect(screen.queryByText(t)).toBeNull()
     expect(screen.queryByText(/день \d+ ·/i)).toBeNull()
     expect(screen.queryByText(/Цвет точки/)).toBeNull()
+  })
+})
+
+describe('исправления по аудиту (К1–К3, Д2, Д7)', () => {
+  it('К1: для резинки — текстовая клавиатура, для веса — цифровая', async () => {
+    render(<App />)
+    await screen.findAllByRole('article')
+    const band = screen.getAllByLabelText('Подход 1, резинка')[0]
+    expect(band.getAttribute('inputmode')).not.toBe('decimal')
+    expect(band.getAttribute('autocapitalize')).toBe('none')
+    const weight = screen.getAllByLabelText('Подход 1, вес')[0]
+    expect(weight.getAttribute('inputmode')).toBe('decimal')
+  })
+
+  it('К2: введённое до загрузки черновика не теряется', async () => {
+    await db.drafts.put({
+      id: today,
+      date: today,
+      feel: 'ok',
+      A: { ex: { squat: [{ w: '35', r: '7' }] }, note: 'из базы' },
+    })
+    render(<App />)
+    // печатаем сразу, не дожидаясь загрузки черновика из базы
+    const reps = screen.getAllByLabelText('Подход 1, повторения')[0] as HTMLInputElement
+    fireEvent.change(reps, { target: { value: '9' } })
+    expect(reps.value).toBe('9')
+    // ждём, пока черновик из базы загрузится
+    await new Promise((r) => setTimeout(r, 300))
+    const after = screen.getAllByLabelText('Подход 1, повторения')[0] as HTMLInputElement
+    expect(after.value).toBe('9')
+  })
+
+  it('Д2: в обычном случае показана только строка цели, без строки рекомендации', async () => {
+    await insertSquatSessions([
+      [3, 3, 3],
+      [4, 4, 4],
+      [5, 4, 3],
+      [7, 7, 7],
+    ])
+    render(<App />)
+    await screen.findAllByRole('article')
+    fireEvent.click(screen.getByRole('button', { name: /Тренировка А/ }))
+    await waitFor(() => expect(screen.getAllByText(/Цель: 40 кг/).length).toBeGreaterThan(0))
+    expect(screen.queryByText(/Тот же вес, добирайте повторения/)).toBeNull()
+  })
+
+  it('Д2: при прибавке строка рекомендации показана', async () => {
+    await insertSquatSessions([
+      [3, 3, 3],
+      [4, 4, 4],
+      [5, 4, 3],
+      [8, 8, 8],
+    ])
+    render(<App />)
+    await screen.findAllByRole('article')
+    fireEvent.click(screen.getByRole('button', { name: /Тренировка А/ }))
+    await waitFor(() => expect(screen.getAllByText(/Цель: 42,5 кг/).length).toBeGreaterThan(0))
+    expect(screen.getAllByText(/Все подходы на 8\+/).length).toBeGreaterThan(0)
+  })
+
+  it('Д7: «Очистить введённое» — с подтверждением вторым нажатием', async () => {
+    render(<App />)
+    const cards = await screen.findAllByRole('article')
+    fireEvent.change(within(cards[0]).getByLabelText('Подход 1, повторения'), { target: { value: '8' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Очистить введённое' }))
+    const armed = await screen.findByRole('button', { name: /Нажмите ещё раз, чтобы очистить/ })
+    // первое нажатие только спрашивает подтверждение — данные на месте
+    expect((screen.getAllByLabelText('Подход 1, повторения')[0] as HTMLInputElement).value).toBe('8')
+    fireEvent.click(armed)
+    await waitFor(() => expect((screen.getAllByLabelText('Подход 1, повторения')[0] as HTMLInputElement).value).toBe(''))
   })
 })
 

@@ -95,10 +95,7 @@ p { margin: 0 0 8px; }
 .small { font-size: 14px; }
 .tiny { font-size: 12.5px; }
 .num { font-variant-numeric: tabular-nums; }
-.row { display: flex; align-items: center; gap: 10px; }
-.row.between { justify-content: space-between; }
 .grow { flex: 1; min-width: 0; }
-.empty { text-align: center; color: var(--muted); padding: 24px 10px; }
 
 .app {
   max-width: 560px;
@@ -123,7 +120,7 @@ p { margin: 0 0 8px; }
   font-size: 11px; font-weight: 600; min-width: 0; position: relative; padding: 0;
 }
 .nav button svg { width: 22px; height: 22px; }
-.nav button span { font-size: 10.5px; line-height: 1; }
+.nav button span { font-size: 12px; line-height: 1; }
 .nav button[aria-current='page'] { color: var(--ink); font-weight: 700; }
 .nav button[aria-current='page']::before {
   content: ''; position: absolute; top: 0; width: 28px; height: 3px; border-radius: 0 0 3px 3px; background: var(--accent);
@@ -151,7 +148,7 @@ p { margin: 0 0 8px; }
 .cycle-hero-text .phase-name { margin: 0 0 4px; }
 
 /* ---------- элементы управления ---------- */
-.label { font-size: 14px; color: var(--muted); margin: 14px 0 6px; }
+.label { font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
 .seg { display: flex; gap: 6px; }
 .seg button {
   flex: 1; min-height: 46px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
@@ -165,6 +162,8 @@ input[type='text'], input[type='number'], input[type='date'], textarea, select {
   width: 100%; min-height: 46px; border: 1px solid var(--line); background: var(--sunk); color: var(--ink);
   border-radius: 10px; font-size: 17px; padding: 8px 10px;
 }
+/* Контраст подсказок к фону поля: светлая тема 5,03:1, тёмная 6,83:1 (норма ≥ 4,5:1). */
+input::placeholder, textarea::placeholder, select::placeholder { color: var(--muted); opacity: 1; }
 textarea { min-height: 70px; font-size: 16px; resize: vertical; }
 .btn {
   display: block; width: 100%; min-height: 52px; background: var(--accent); color: var(--on-accent);
@@ -186,6 +185,7 @@ textarea { min-height: 70px; font-size: 16px; resize: vertical; }
 .rec.down { border-color: var(--m-light); }
 .rec.first { border-color: var(--line); }
 .goal { font-size: 13.5px; color: var(--muted); margin: 0 0 8px 36px; }
+.warmup { font-size: 12.5px; margin: 8px 0 0; }
 .sets { display: grid; grid-template-columns: 34px 1fr 16px 1fr; gap: 8px 8px; align-items: center; }
 .sets .h { font-size: 12px; color: var(--muted); }
 .set-n { font-size: 14px; color: var(--muted); text-align: center; }
@@ -227,6 +227,26 @@ textarea { min-height: 70px; font-size: 16px; resize: vertical; }
 .step-name { font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
 .step-row input { min-height: 40px; font-size: 16px; padding: 4px 8px; text-align: right; }
 .step-note { font-size: 12.5px; text-align: right; }
+
+/* ---------- заметка и очистка введённого ---------- */
+.note-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 12px 14px; margin: 12px 0 0;
+}
+.note-card .field { margin: 0; }
+.note-card .field label { margin-bottom: 4px; }
+.clear-btn { min-height: 44px; display: inline-flex; align-items: center; margin-top: 4px; }
+
+/* ---------- липкая кнопка сохранения ---------- */
+.save-bar {
+  position: sticky;
+  bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 4px);
+  z-index: 15;
+  margin-top: 14px;
+  padding: 10px 0 6px;
+  background: var(--bg);
+}
+.save-bar .btn { margin: 0; }
 
 /* ---------- служебное ---------- */
 .toast {

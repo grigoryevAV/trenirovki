@@ -75,8 +75,23 @@ describe('верхняя граница (п. 3.1)', () => {
     expect(allSetsAtTop(squat, sets(3, 40, 8))).toBe(true)
   })
 
-  it('разные веса — не верхняя граница', () => {
-    expect(allSetsAtTop(squat, [{ w: 40, r: 8 }, { w: 42.5, r: 8 }, { w: 40, r: 8 }])).toBe(false)
+  it('пирамида: рабочий вес — максимальный, прибавка от него', () => {
+    // 30 / 32,5 / 32,5 — все подходы с рабочим весом на верхней границе
+    expect(allSetsAtTop(squat, [{ w: 30, r: 8 }, { w: 32.5, r: 8 }, { w: 32.5, r: 8 }])).toBe(true)
+    const p = plan(squat, [item('progress', [30, 32.5, 32.5], [8, 8, 8])])
+    expect(p.weight).toBe(35)
+    expect(p.tone).toBe('up')
+  })
+
+  it('пирамида вниз: подход с рабочим весом не на hi — прибавки нет', () => {
+    expect(allSetsAtTop(squat, [{ w: 32.5, r: 8 }, { w: 32.5, r: 7 }, { w: 30, r: 8 }])).toBe(false)
+    const p = plan(squat, [item('progress', [32.5, 32.5, 30], [8, 7, 8])])
+    expect(p.weight).toBe(32.5)
+    expect(p.tone).toBe('same')
+  })
+
+  it('подходы легче рабочего веса в проверку не входят', () => {
+    expect(allSetsAtTop(squat, [{ w: 40, r: 8 }, { w: 42.5, r: 8 }, { w: 40, r: 8 }])).toBe(true)
   })
 
   it('не все подходы на hi', () => {

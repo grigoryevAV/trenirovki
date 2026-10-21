@@ -66,12 +66,18 @@ function keepReps(def: ExerciseDef, lastSets: SetEntry[]): number[] {
   })
 }
 
-/** Все запланированные подходы сделаны на верхней границе одним и тем же весом. */
+/**
+ * Все запланированные подходы сделаны на верхней границе.
+ * Считается по РАБОЧЕМУ весу = максимальному: подходы легче рабочего в проверку не входят,
+ * но все подходы с рабочим весом должны быть на верхней границе, и сделано должно быть
+ * не меньше def.sets подходов.
+ */
 export function allSetsAtTop(def: ExerciseDef, sets: SetEntry[]): boolean {
   if (sets.length < def.sets) return false
   const weights = sets.map((s) => num(s.w))
-  const sameWeight = weights.every((w) => w === weights[0])
-  return sameWeight && sets.every((s) => num(s.r) >= def.hi)
+  const working = Math.max(...weights)
+  const topSets = sets.filter((_, i) => weights[i] === working)
+  return topSets.length > 0 && topSets.every((s) => num(s.r) >= def.hi)
 }
 
 /** Максимальный вес подхода. */
