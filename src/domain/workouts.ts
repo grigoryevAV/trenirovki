@@ -1,5 +1,5 @@
 /** Тренировки А и Б, подписи веса, фазы, режимы и советы — дословно из эталона. */
-import type { LoadKind, Phase, WorkoutDef } from './types'
+import type { ExerciseDef, LoadKind, Phase, WorkoutDef } from './types'
 
 export const WORKOUTS: Record<'A' | 'B', WorkoutDef> = {
   A: {
@@ -75,3 +75,24 @@ export const PHASE_LOWER: Record<Phase, string> = {
   pms: 'перед менструацией',
   late: 'цикл длиннее расчётного',
 }
+
+/** Короткие названия фаз — для компактной строки цикла. */
+export const PHASE_SHORT: Record<Phase, string> = {
+  men: 'менструация',
+  fol: 'фолликулярная',
+  ovu: 'овуляция',
+  lut: 'лютеиновая',
+  pms: 'перед менструацией',
+  late: 'цикл длиннее расчётного',
+}
+
+/** Все упражнения программы (по одному на id) — для настроек шагов прогрессии. */
+export const ALL_EXERCISES: ExerciseDef[] = (() => {
+  const seen = new Map<string, ExerciseDef>()
+  for (const t of ['A', 'B'] as const) {
+    for (const e of WORKOUTS[t].ex) {
+      if (!seen.has(e.id)) seen.set(e.id, e)
+    }
+  }
+  return [...seen.values()]
+})()

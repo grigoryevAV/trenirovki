@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { WD, fmtKg, fmtShort, num, parseD } from '../../domain/format'
-import type { Phase } from '../../domain/types'
-import { PHASES, PHASE_LOWER, WORKOUTS } from '../../domain/workouts'
+import { WORKOUTS } from '../../domain/workouts'
 import { deleteSession } from '../../storage/repo'
 import { WeightChart, useToast } from '../components'
 import { useSessions } from '../data'
@@ -28,7 +27,7 @@ export function HistoryScreen() {
   const points = [...sessions]
     .reverse()
     .filter((s) => s.type === type && s.ex && s.ex[id] && s.ex[id].length)
-    .map((s) => ({ date: s.date, w: Math.max(...s.ex[id].map((x) => num(x.w))), phase: s.phase }))
+    .map((s) => ({ date: s.date, w: Math.max(...s.ex[id].map((x) => num(x.w))) }))
 
   const onDelete = async (id2: string): Promise<void> => {
     if (delArm === id2) {
@@ -64,7 +63,6 @@ export function HistoryScreen() {
       {sessions.map((s) => {
         const W = WORKOUTS[s.type]
         if (!W) return null
-        const ph = s.phase ? PHASES[s.phase as Phase] : null
         const feelTxt = FEEL_TEXT[s.feel] ?? ''
         return (
           <article className="sess" key={s.id}>
@@ -72,11 +70,6 @@ export function HistoryScreen() {
               <span className="sess-title">
                 {fmtShort(s.date)}, {WD[parseD(s.date).getDay()]} · {W.title}
               </span>
-              {ph && (
-                <span className="pchip" style={{ color: ph.color }}>
-                  день {s.cycleDay} · {PHASE_LOWER[s.phase as Phase]}
-                </span>
-              )}
             </div>
             {feelTxt && <div className="muted small">Самочувствие: {feelTxt}</div>}
             <ul>

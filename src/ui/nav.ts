@@ -1,4 +1,4 @@
-/** Навигация по hash-маршрутам (#/today, #/history, #/cycle, #/tech). */
+/** Навигация по hash-маршрутам (#/today, #/history, #/cycle). */
 export function go(path: string): void {
   window.location.hash = `#/${path}`
 }

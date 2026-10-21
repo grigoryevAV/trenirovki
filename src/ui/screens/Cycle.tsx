@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { averageCycleLen, cycleInfo, phaseRanges } from '../../domain/cycle'
 import { addDays, fmtShort, todayStr } from '../../domain/format'
-import { PHASES, PHASE_ADVICE } from '../../domain/workouts'
+import { DEFAULT_STEPS } from '../../domain/progression'
+import { ALL_EXERCISES, MODES, PHASES, PHASE_ADVICE, PHASE_SHORT } from '../../domain/workouts'
 import { backupPlainText, backupText, buildBackup, downloadText, importBackup, parseBackupText } from '../../storage/backup'
 import { defaultConfig } from '../../storage/db'
 import { saveConfig } from '../../storage/repo'
 import type { ConfigRow, Theme } from '../../storage/types'
-import { useToast } from '../components'
+import { CycleRing, useToast } from '../components'
 import { useConfig } from '../data'
 
 const THEMES: Array<[Theme, string]> = [
@@ -137,6 +138,18 @@ export function CycleScreen() {
       {ci.ok && (
         <>
           <h2>Текущий цикл</h2>
+          <section className="cycle-hero">
+            <CycleRing day={ci.day} L={ci.L} P={ci.P} small />
+            <div className="cycle-hero-text">
+              <p className="phase-name" style={{ color: PHASES[ci.phase].color }}>
+                {PHASES[ci.phase].name}
+              </p>
+              <span className={`mode-chip mode-${ci.mode}`}>{MODES[ci.mode].label}</span>
+              <p className="muted small" style={{ marginTop: 6 }}>
+                День {ci.day} из {ci.L} · {PHASE_SHORT[ci.phase]}
+              </p>
+            </div>
+          </section>
           <table className="ptable">
             <tbody>
               {phaseRanges(cfg.cycleLen, cfg.periodLen).map((r) => {
@@ -206,6 +219,32 @@ export function CycleScreen() {
           <button key={k} type="button" aria-pressed={cfg.theme === k} onClick={() => void saveConfig({ theme: k })}>
             {l}
           </button>
+        ))}
+      </div>
+
+      <h2>Настройки прогрессии</h2>
+      <p className="muted small">Шаг прибавки веса для каждого упражнения. В окне прогресса вес прибавляется на этот шаг.</p>
+      <div className="steps">
+        {ALL_EXERCISES.map((e) => (
+          <div className="step-row" key={e.id}>
+            <span className="step-name">{e.name}</span>
+            {e.kind === 'band' ? (
+              <span className="muted small step-note">тоньше</span>
+            ) : (
+              <>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  inputMode="decimal"
+                  aria-label={`Шаг прибавки, ${e.name}`}
+                  value={cfg.steps?.[e.id] ?? DEFAULT_STEPS[e.id] ?? 0}
+                  onChange={(ev) => void saveConfig({ steps: { ...cfg.steps, [e.id]: Number(ev.target.value) } })}
+                />
+                <span className="muted small step-note">кг</span>
+              </>
+            )}
+          </div>
         ))}
       </div>
 

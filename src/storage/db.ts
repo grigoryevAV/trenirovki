@@ -1,6 +1,7 @@
 /** Локальная база в IndexedDB (Dexie). Сервера нет: данные живут только на этом устройстве. */
 import Dexie, { type Table } from 'dexie'
 import { DEFAULT_CYCLE_LEN, DEFAULT_PERIOD_LEN } from '../domain/cycle'
+import { DEFAULT_STEPS } from '../domain/progression'
 import type { ConfigRow, DraftRow, SessionRow } from './types'
 
 /** Версия схемы хранения. Повышается вместе с миграцией в Dexie.version(). */
@@ -37,6 +38,7 @@ export function defaultConfig(now = new Date().toISOString()): ConfigRow {
     cycleLen: DEFAULT_CYCLE_LEN,
     periodLen: DEFAULT_PERIOD_LEN,
     theme: 'auto',
+    steps: { ...DEFAULT_STEPS },
     updatedAt: now,
   }
 }
@@ -50,7 +52,15 @@ export function defaultConfig(now = new Date().toISOString()): ConfigRow {
  */
 export async function ensureConfig(): Promise<ConfigRow> {
   const c = await db.config.get('me')
-  if (c) return c
+  if (c) {
+    // Конфиг, созданный до появления настроек прогрессии, дополняем шагами по умолчанию.
+    if (!c.steps || typeof c.steps !== 'object') {
+      const fixed: ConfigRow = { ...c, steps: { ...DEFAULT_STEPS } }
+      await db.config.put(fixed)
+      return fixed
+    }
+    return c
+  }
   const fresh = defaultConfig()
   await db.config.put(fresh)
   return fresh

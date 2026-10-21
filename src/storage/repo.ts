@@ -1,5 +1,6 @@
 /** Операции с данными: настройки цикла, тренировки, черновик. */
 import { normConfig } from '../domain/cycle'
+import { DEFAULT_STEPS } from '../domain/progression'
 import type { Draft, DraftType, Session } from '../domain/types'
 import { db, ensureConfig } from './db'
 import type { ConfigRow, DraftRow, SessionRow } from './types'
@@ -26,6 +27,7 @@ export async function saveConfig(patch: Partial<ConfigRow>): Promise<ConfigRow> 
     cycleLen: merged.cycleLen,
     periodLen: merged.periodLen,
     theme: patch.theme ?? cur.theme,
+    steps: { ...DEFAULT_STEPS, ...cur.steps, ...(patch.steps ?? {}) },
     updatedAt: now(),
   }
   await db.config.put(next)

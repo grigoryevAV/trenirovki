@@ -38,7 +38,7 @@ describe('запуск приложения на пустой базе', () => {
       expect(problems.join(' | ')).not.toMatch(/ReadOnlyError|liveQuery context/)
       expect(putSpy).not.toHaveBeenCalled()
       // настроек по умолчанию ещё нет — приложение просит указать дату начала менструации
-      expect(screen.getByText('Укажите дату начала менструации')).toBeTruthy()
+      expect(screen.getByText(/Укажите дату начала менструации/)).toBeTruthy()
     } finally {
       window.removeEventListener('error', onWindowError)
       consoleSpy.mockRestore()
@@ -60,7 +60,7 @@ describe('запуск приложения на пустой базе', () => {
       await new Promise((r) => setTimeout(r, 250))
       expect(problems.join(' | ')).not.toMatch(/ReadOnlyError|liveQuery context/)
       // настройки по умолчанию без даты начала менструации
-      expect(screen.getByText('Укажите дату начала менструации')).toBeTruthy()
+      expect(screen.getByText(/Укажите дату начала менструации/)).toBeTruthy()
       expect(await db.config.get('me')).toMatchObject({ periodStarts: [], cycleLen: 28, periodLen: 5 })
     } finally {
       consoleSpy.mockRestore()
@@ -82,7 +82,7 @@ describe('запуск приложения на пустой базе', () => {
       await new Promise((r) => setTimeout(r, 250))
       expect(problems.join(' | ')).not.toMatch(/ReadOnlyError|liveQuery context/)
       // настройки созданы на старте, приложение просит указать дату начала менструации
-      expect(screen.getByText('Укажите дату начала менструации')).toBeTruthy()
+      expect(screen.getByText(/Укажите дату начала менструации/)).toBeTruthy()
       expect(await db.config.get('me')).toMatchObject({ periodStarts: [], cycleLen: 28, periodLen: 5 })
     } finally {
       consoleSpy.mockRestore()

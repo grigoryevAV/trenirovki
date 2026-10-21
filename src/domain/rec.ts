@@ -1,58 +1,34 @@
-/** Рекомендации по весу — все ветки дословно из эталона. */
-import { fmtKg, fmtShort, num } from './format'
+/** Рекомендации по упражнениям: thinly обёртка над правилами прогрессии. */
+import { fmtKg, fmtShort } from './format'
+import { type ExerciseHistoryItem, planProgression, type ProgressionPlan } from './progression'
 import type { ExerciseDef, Mode, Session, SetEntry } from './types'
 
-export interface Rec {
-  /** Рекомендованный вес: число (кг), строка (резинка) или '' (подобрать самой). */
-  w: number | string
-  tone: 'first' | 'up' | 'down' | 'same'
-  text: string
+export type { ExerciseHistoryItem, ProgressionPlan }
+
+export interface RecInput {
+  def: ExerciseDef
+  /** Тренировки этого упражнения (того же типа), новые сверху. */
+  history: ExerciseHistoryItem[]
+  mode: Mode
+  /** Этап освоения: первые 4 тренировки. */
+  early: boolean
+  /** Шаги прибавки из настроек. */
+  steps?: Record<string, number>
+  /** Подпись запаса повторений. */
+  rir?: string
+}
+
+/**
+ * Рекомендация по упражнению на сегодня: вес, цели повторений, короткий текст и строка цели.
+ * Вся логика — в src/domain/progression.ts.
+ */
+export function rec(input: RecInput): ProgressionPlan {
+  return planProgression(input)
 }
 
 export interface LastSet {
   date: string
   sets: SetEntry[]
-}
-
-/**
- * Рекомендация по следующей тренировке.
- * @param def упражнение
- * @param last предыдущие подходы по этому упражнению (null — первый раз)
- * @param mode режим (progress / hold / light)
- * @param early этап освоения (первые 4 тренировки)
- */
-export function rec(def: ExerciseDef, last: LastSet | null, mode: Mode, early: boolean): Rec {
-  if (!last) {
-    if (def.kind === 'band') return { w: '', tone: 'first', text: 'Первый раз: подберите резинку, с которой получается 5–8 чистых повторений.' }
-    if (def.id === 'squat') return { w: '', tone: 'first', text: 'Первый раз: пустой гриф, запас 4–5 повторов. Задача — техника.' }
-    if (def.kind === 'bw') return { w: 0, tone: 'first', text: 'Первый раз: без веса, плавно, без переразгибания в пояснице.' }
-    return { w: '', tone: 'first', text: 'Первый раз: лёгкий вес с запасом 4–5 повторов.' }
-  }
-  const sets = last.sets
-  const allTop = sets.length >= def.sets && sets.every((s) => num(s.r) >= def.hi)
-  if (def.kind === 'band') {
-    const band = sets[sets.length - 1].w || ''
-    if (mode === 'light') return { w: band, tone: 'down', text: 'Та же или более толстая резинка, без отказа.' }
-    if (allTop && mode === 'progress') return { w: band, tone: 'up', text: `Все подходы на ${def.hi}+ — возьмите резинку тоньше и начните с ${def.lo} повторов.` }
-    if (allTop) return { w: band, tone: 'same', text: 'Верхняя граница взята. Резинку тоньше — только если сегодня легко.' }
-    return { w: band, tone: 'same', text: `Та же резинка, добирайте повторения до ${def.hi}.` }
-  }
-  const lastW = Math.max(...sets.map((s) => num(s.w)))
-  const incText = def.kind === 'db' ? 'берите следующие по весу гантели' : def.id === 'hip' ? '+2,5–5 кг' : def.kind === 'bw' ? '+2,5 кг (блин у груди)' : '+2,5 кг'
-  if (mode === 'light') {
-    if (def.kind === 'db' || def.kind === 'bw') return { w: lastW, tone: 'down', text: 'Вес прошлого раза или легче, запас 3–4 повтора.' }
-    const w = Math.max(0, Math.round((lastW * 0.9) / 2.5) * 2.5)
-    return { w, tone: 'down', text: `Облегчённо: около ${fmtKg(w)} кг (−10%), запас 3–4 повтора. Можно на 1 подход меньше.` }
-  }
-  if (early) {
-    if (def.kind === 'bar') return { w: lastW + 2.5, tone: 'up', text: 'Этап освоения: если в прошлый раз было легко и чисто — +2,5–5 кг. Запас 4–5 повторов.' }
-    return { w: lastW, tone: 'same', text: 'Этап освоения: запас 4–5 повторов, техника важнее веса.' }
-  }
-  if (allTop && mode === 'progress') {
-    return { w: def.kind === 'db' ? lastW : lastW + 2.5, tone: 'up', text: `Все подходы на верхней границе — ${incText}, начинайте с ${def.lo} повторов.` }
-  }
-  if (allTop) return { w: lastW, tone: 'same', text: `Верхняя граница взята. ${incText[0].toUpperCase() + incText.slice(1)} — только если сегодня легко.` }
-  return { w: lastW, tone: 'same', text: `Тот же вес, добирайте повторения до ${def.hi} во всех подходах.` }
 }
 
 /** Тренировки по убыванию времени. */

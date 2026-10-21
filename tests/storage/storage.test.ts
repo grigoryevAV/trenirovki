@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { buildBackup, importBackup, parseBackupText, validateBackup } from '../../src/storage/backup'
 import { db, defaultConfig, ensureConfig, useDatabase } from '../../src/storage/db'
 import { addSession, deleteSession, getDraft, listSessions, saveConfig, saveDraft } from '../../src/storage/repo'
+import type { ConfigRow } from '../../src/storage/types'
 import type { Session } from '../../src/domain/types'
 
 let n = 0
@@ -68,6 +69,24 @@ describe('настройки цикла', () => {
   it('тема оформления сохраняется', async () => {
     const c = await saveConfig({ theme: 'dark' })
     expect(c.theme).toBe('dark')
+  })
+
+  it('шаги прогрессии сохраняются в конфиге и входят в копию', async () => {
+    const c = await saveConfig({ steps: { squat: 5 } })
+    expect(c.steps.squat).toBe(5)
+    // остальные шаги — по умолчанию
+    expect(c.steps.bench).toBe(1)
+
+    const file = await buildBackup()
+    expect(file.config.steps).toMatchObject({ squat: 5, bench: 1 })
+
+    useDatabase(`test-steps-${Math.random()}`)
+    await ensureConfig()
+    const parsed = parseBackupText(JSON.stringify(file))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    await importBackup(parsed.file)
+    expect((await ensureConfig()).steps.squat).toBe(5)
   })
 })
 
@@ -165,6 +184,22 @@ describe('резервная копия', () => {
     await importBackup(parsed.file)
     expect(await listSessions()).toHaveLength(1)
     expect((await ensureConfig()).periodStarts).toEqual(['2026-01-01'])
+  })
+
+  it('старый конфиг без шагов дополняется значениями по умолчанию', async () => {
+    // конфиг, созданный до появления настроек прогрессии
+    await db.config.put({
+      id: 'me',
+      periodStarts: ['2026-01-01'],
+      cycleLen: 28,
+      periodLen: 5,
+      theme: 'auto',
+      updatedAt: '',
+    } as unknown as ConfigRow)
+    const c = await ensureConfig()
+    expect(c.steps.squat).toBe(2.5)
+    expect(c.steps.bench).toBe(1)
+    expect((await db.config.get('me'))!.steps.squat).toBe(2.5)
   })
 
   it('настройки по умолчанию не содержат даты начала', () => {

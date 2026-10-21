@@ -5,12 +5,16 @@ import { ErrorBoundary } from './ErrorBoundary'
 import { go } from './nav'
 import { CycleScreen } from './screens/Cycle'
 import { HistoryScreen } from './screens/History'
-import { TechScreen } from './screens/Tech'
 import { TodayScreen } from './screens/Today'
 
-/** Маршрут в hash: #/today, #/history, #/cycle, #/tech. Кнопка «назад» телефона работает штатно. */
+/** Маршрут в hash: #/today, #/history, #/cycle. Кнопка «назад» телефона работает штатно. */
 function useHashRoute(): string[] {
-  const read = () => (window.location.hash.replace(/^#\/?/, '') || 'today').split('/').map(decodeURIComponent)
+  const read = () => {
+    const parts = (window.location.hash.replace(/^#\/?/, '') || 'today').split('/').map(decodeURIComponent)
+    // Вкладка «Техника» удалена — старый адрес открывает «Сегодня».
+    if (parts[0] === 'tech') return ['today']
+    return parts
+  }
   const [route, setRoute] = useState<string[]>(read)
   useEffect(() => {
     const on = () => {
@@ -27,14 +31,12 @@ const TABS = [
   { id: 'today', label: 'Сегодня', icon: Icon.today },
   { id: 'history', label: 'История', icon: Icon.history },
   { id: 'cycle', label: 'Цикл', icon: Icon.cycle },
-  { id: 'tech', label: 'Техника', icon: Icon.tech },
 ] as const
 
 function Screen({ route }: { route: string[] }) {
   switch (route[0]) {
     case 'history': return <HistoryScreen />
     case 'cycle': return <CycleScreen />
-    case 'tech': return <TechScreen />
     default: return <TodayScreen />
   }
 }

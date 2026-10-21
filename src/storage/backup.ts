@@ -6,7 +6,7 @@
 import { normConfig } from '../domain/cycle'
 import type { CycleConfig, Feel, Mode, Phase, Session, WorkoutType } from '../domain/types'
 import { getConfig, listSessions, mergeSessions, saveConfig } from './repo'
-import { BACKUP_APP_ID, type BackupFile, type SessionRow } from './types'
+import { BACKUP_APP_ID, type BackupConfig, type BackupFile, type SessionRow } from './types'
 
 export { BACKUP_APP_ID }
 export const BACKUP_VERSION = 1
@@ -24,7 +24,12 @@ export async function buildBackup(): Promise<BackupFile> {
     app: BACKUP_APP_ID,
     v: BACKUP_VERSION,
     exported: new Date().toISOString(),
-    config: { periodStarts: config.periodStarts, cycleLen: config.cycleLen, periodLen: config.periodLen },
+    config: {
+      periodStarts: config.periodStarts,
+      cycleLen: config.cycleLen,
+      periodLen: config.periodLen,
+      steps: { ...config.steps },
+    },
     sessions: sessions as SessionRow[],
   }
 }
@@ -74,6 +79,17 @@ function normalizeSession(s: Record<string, unknown>): Session {
 
 export type ValidateResult = { ok: true; file: BackupFile } | { ok: false; error: string }
 
+/** Шаги прибавки из копии: только неотрицательные числа. */
+function normSteps(raw: unknown): Record<string, number> {
+  if (!isObj(raw)) return {}
+  const out: Record<string, number> = {}
+  for (const [id, v] of Object.entries(raw)) {
+    const n = typeof v === 'number' ? v : Number(v)
+    if (Number.isFinite(n) && n >= 0) out[id] = n
+  }
+  return out
+}
+
 /** Проверка файла копии. Чужой или повреждённый файл отклоняется с понятным текстом. */
 export function validateBackup(raw: unknown): ValidateResult {
   if (!isObj(raw)) return { ok: false, error: 'Это не файл копии' }
@@ -85,7 +101,12 @@ export function validateBackup(raw: unknown): ValidateResult {
     if (err) return { ok: false, error: `Это не файл копии: ${err}` }
     sessions.push(normalizeSession(raw.sessions[i] as Record<string, unknown>))
   }
-  const config: CycleConfig = isObj(raw.config) ? normConfig(raw.config as Partial<CycleConfig>) : { periodStarts: [], cycleLen: 28, periodLen: 5 }
+  const config: BackupConfig = isObj(raw.config)
+    ? {
+        ...normConfig(raw.config as Partial<CycleConfig>),
+        steps: normSteps((raw.config as Record<string, unknown>).steps),
+      }
+    : { periodStarts: [], cycleLen: 28, periodLen: 5, steps: {} }
   return {
     ok: true,
     file: {
@@ -122,6 +143,7 @@ export async function importBackup(file: BackupFile): Promise<{ added: number }>
       periodStarts: starts,
       cycleLen: file.config.cycleLen,
       periodLen: file.config.periodLen,
+      steps: file.config.steps && Object.keys(file.config.steps).length ? file.config.steps : undefined,
     })
   }
   return { added }

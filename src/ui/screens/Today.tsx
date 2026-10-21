@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { cycleInfo } from '../../domain/cycle'
 import { fmtKg, fmtLong, num, todayStr } from '../../domain/format'
-import { lastFor, lastLine, nextType, rec } from '../../domain/rec'
+import { exerciseHistory, rirCaption, trainingWeek } from '../../domain/progression'
+import { lastLine, nextType, rec } from '../../domain/rec'
 import type { CycleConfig, Draft, DraftType, Feel, Mode, Session, SetEntry, WorkoutType } from '../../domain/types'
-import { MODES, PHASES, WORKOUTS, W_LABEL } from '../../domain/workouts'
+import { WORKOUTS, W_LABEL } from '../../domain/workouts'
 import { addSession, clearDraftType, getDraft, saveConfig, saveDraft } from '../../storage/repo'
-import { CycleRing, useToast } from '../components'
+import { useToast } from '../components'
 import { useConfig, useSessions } from '../data'
 
 /** Настройки по умолчанию, пока запись в базе ещё не создана. */
@@ -17,23 +18,23 @@ const FEELS: Array<[Feel, string]> = [
   ['bad', 'Плохо'],
 ]
 
-/** Карточка первого запуска: просит указать дату начала менструации. */
+/** Карточка первого запуска: одна строка + поле даты. */
 function FirstRunCard({ onSave }: { onSave: (date: string) => void }) {
   const [date, setDate] = useState('')
   const today = todayStr()
   return (
-    <div className="note alert">
-      <p>
-        <b>Укажите дату начала менструации</b> — без неё не определить фазу цикла и режим тренировки. Дата
-        останется только на этом устройстве.
-      </p>
-      <div className="field">
-        <label htmlFor="firstStart">Начало последней менструации</label>
-        <input id="firstStart" type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} />
-      </div>
-      <button type="button" className="btn sm" disabled={!date} onClick={() => onSave(date)}>
-        Сохранить дату
-      </button>
+    <div className="note note-inline">
+      <span className="grow">Укажите дату начала менструации — по ней определяется режим тренировки.</span>
+      <input
+        type="date"
+        max={today}
+        aria-label="Начало последней менструации"
+        value={date}
+        onChange={(e) => {
+          setDate(e.target.value)
+          if (e.target.value) onSave(e.target.value)
+        }}
+      />
     </div>
   )
 }
@@ -67,12 +68,15 @@ export function TodayScreen() {
   const nextT = nextType(sessions)
   // Пока запись настроек не создана (база недоступна) — работаем с пустыми настройками.
   const cfg: CycleConfig = config ?? EMPTY_CONFIG
+  const steps = config?.steps ?? {}
   const ci = cycleInfo(cfg, today)
   const phaseMode: Mode = ci.ok ? ci.mode : 'hold'
   const feel: Feel = draft.feel || 'ok'
   const mode: Mode = feel === 'bad' ? 'light' : phaseMode
   const early = sessions.length < 4
   const dt: DraftType | undefined = draft[type]
+  const firstDate = sessions.length ? [...sessions].map((s) => s.date).sort()[0] : null
+  const week = trainingWeek(firstDate, today)
 
   const setFeel = (v: Feel): void => update({ ...draft, feel: v })
 
@@ -101,14 +105,15 @@ export function TodayScreen() {
     const ex: Record<string, SetEntry[]> = {}
     let count = 0
     for (const d of def.ex) {
-      const r = rec(d, lastFor(sessions, type, d.id), mode, early)
+      const history = exerciseHistory(sessions, type, d.id)
+      const r = rec({ def: d, history, mode, early, steps })
       const dEx = dt?.ex?.[d.id] ?? []
       const sets: SetEntry[] = []
       for (let i = 0; i < d.sets; i++) {
         const row = dEx[i] ?? {}
         const reps = parseInt(row.r ?? '', 10)
         if (!reps) continue
-        const wRaw = row.w !== undefined ? row.w : r.w
+        const wRaw = row.w !== undefined ? row.w : r.weight
         sets.push({ w: d.kind === 'band' ? String(wRaw || '') : num(wRaw), r: reps })
       }
       if (sets.length) {
@@ -126,8 +131,8 @@ export function TodayScreen() {
       date: today,
       ts,
       type,
-      cycleDay: ci && ci.ok ? ci.day : null,
-      phase: ci && ci.ok ? ci.phase : null,
+      cycleDay: ci.ok ? ci.day : null,
+      phase: ci.ok ? ci.phase : null,
       mode,
       feel,
       note: dt?.note ?? '',
@@ -143,36 +148,13 @@ export function TodayScreen() {
     window.scrollTo(0, 0)
   }
 
+
   return (
     <main className="screen">
       <div className="top-date">{fmtLong(today)}</div>
       <h1>Сегодня</h1>
 
-      {cfg.periodStarts.length === 0 && (
-        <FirstRunCard onSave={(date) => void saveConfig({ periodStarts: [date] })} />
-      )}
-
-      {ci.ok ? (
-        <section className="hero">
-          <CycleRing day={ci.day} L={ci.L} P={ci.P} />
-          <div className="hero-text">
-            <p className="phase-name" style={{ color: PHASES[ci.phase].color }}>{PHASES[ci.phase].name}</p>
-            <span className={`mode-chip mode-${mode}`}>{MODES[mode].label}</span>
-            <p>
-              {feel === 'bad' && phaseMode !== 'light'
-                ? 'Самочувствие важнее календаря: сегодня облегчённо, без прибавок.'
-                : MODES[mode].text}
-            </p>
-            {ci.predicted && (
-              <p className="muted small" style={{ marginTop: 6 }}>
-                Расчёт приблизительный — отметьте начало последней менструации.
-              </p>
-            )}
-          </div>
-        </section>
-      ) : (
-        <div className="note">{ci.error}</div>
-      )}
+      {cfg.periodStarts.length === 0 && <FirstRunCard onSave={(date) => void saveConfig({ periodStarts: [date] })} />}
 
       <div className="label">Как самочувствие?</div>
       <div className="seg" role="group" aria-label="Самочувствие">
@@ -199,8 +181,9 @@ export function TodayScreen() {
       </p>
 
       {def.ex.map((d) => {
-        const last = lastFor(sessions, type, d.id)
-        const r = rec(d, last, mode, early)
+        const history = exerciseHistory(sessions, type, d.id)
+        const last = history[0] ? { date: history[0].date, sets: history[0].sets } : null
+        const r = rec({ def: d, history, mode, early, steps, rir: rirCaption(week, d, mode) })
         const dEx = dt?.ex?.[d.id] ?? []
         return (
           <article className="ex" key={d.id}>
@@ -213,6 +196,7 @@ export function TodayScreen() {
             </div>
             {last && <div className="ex-last">{lastLine(d, last)}</div>}
             <div className={`rec ${r.tone}`}>{r.text}</div>
+            <div className="goal">{r.target}</div>
             <div className="sets">
               <span className="h" />
               <span className="h">{W_LABEL[d.kind]}</span>
@@ -220,7 +204,14 @@ export function TodayScreen() {
               <span className="h">повторы</span>
               {Array.from({ length: d.sets }, (_, i) => {
                 const raw = dEx[i]?.w
-                const wv = raw !== undefined ? raw : d.kind === 'band' ? String(r.w) : r.w === '' ? '' : fmtKg(r.w)
+                const wv =
+                  raw !== undefined
+                    ? raw
+                    : d.kind === 'band'
+                      ? String(r.weight)
+                      : r.weight === ''
+                        ? ''
+                        : fmtKg(r.weight)
                 const rv = dEx[i]?.r ?? ''
                 return (
                   <span key={i} style={{ display: 'contents' }}>
@@ -239,7 +230,7 @@ export function TodayScreen() {
                       type="text"
                       inputMode="numeric"
                       autoComplete="off"
-                      placeholder={`${d.lo}–${d.hi}`}
+                      placeholder={`цель ${r.reps[i]}`}
                       aria-label={`Подход ${i + 1}, повторения`}
                       value={rv}
                       onChange={(e) => setSetValue(d.id, i, 'r', e.target.value.replace(/[^\d]/g, ''))}

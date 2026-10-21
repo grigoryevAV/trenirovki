@@ -7,6 +7,8 @@ export type Theme = 'auto' | 'light' | 'dark'
 export interface ConfigRow extends CycleConfig {
   id: 'me'
   theme: Theme
+  /** Шаги прибавки по упражнениям, кг. */
+  steps: Record<string, number>
   updatedAt: string
 }
 
@@ -18,6 +20,11 @@ export interface DraftRow extends Draft {
   id: string
 }
 
+/** Настройки в файле резервной копии. */
+export interface BackupConfig extends CycleConfig {
+  steps?: Record<string, number>
+}
+
 /** Идентификатор приложения в файле резервной копии (совпадает с эталоном). */
 export const BACKUP_APP_ID = 'trenirovki'
 
@@ -26,6 +33,6 @@ export interface BackupFile {
   app: typeof BACKUP_APP_ID
   v: number
   exported?: string
-  config: CycleConfig
+  config: BackupConfig
   sessions: SessionRow[]
 }

@@ -1,22 +1,24 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { todayStr } from '../../src/domain/format'
+import { addDays, todayStr } from '../../src/domain/format'
 import { db, defaultConfig, useDatabase } from '../../src/storage/db'
 import { App } from '../../src/ui/App'
 
+const today = todayStr()
+
+/** Тексты, которых не должно быть на основных экранах: фазы и день цикла. */
+const PHASE_TEXTS = ['Менструация', 'Фолликулярная фаза', 'Овуляция (примерно)', 'Лютеиновая фаза', 'Перед менструацией', 'Цикл длиннее расчётного']
+
 beforeEach(async () => {
   useDatabase(`ui-${Math.random()}`)
-  // начало менструации — сегодня: день цикла 1, фаза «менструация»
-  await db.config.put({ ...defaultConfig(), periodStarts: [todayStr()] })
+  // начало менструации 5 дней назад → сегодня 6-й день цикла, фолликулярная фаза, окно прогресса
+  await db.config.put({ ...defaultConfig(), periodStarts: [addDays(today, -5)] })
   window.location.hash = '#/today'
 })
 
 describe('экран «Сегодня»', () => {
   it('сохранённая тренировка появляется в «Истории»', async () => {
     render(<App />)
-
-    // ждём загрузки настроек цикла — после этого известен режим тренировки
-    await screen.findByText('Облегчённый режим')
 
     const cards = await screen.findAllByRole('article')
     const reps = within(cards[0]).getByLabelText('Подход 1, повторения')
@@ -28,19 +30,20 @@ describe('экран «Сегодня»', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'История' })).toBeTruthy())
     await waitFor(() => expect(screen.getByText(/Приседания со штангой/)).toBeTruthy())
     expect(screen.getByText(/×8/)).toBeTruthy()
-    // день цикла и фаза сохранились вместе с тренировкой
-    expect(screen.getByText(/день 1 · менструация/)).toBeTruthy()
   })
 
-  it('без даты начала менструации просит её указать', async () => {
+  it('без даты начала менструации — компактная просьба указать её', async () => {
     await db.config.put({ ...defaultConfig(), periodStarts: [] })
     render(<App />)
-    await waitFor(() => expect(screen.getByText('Укажите дату начала менструации')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/Укажите дату начала менструации/)).toBeTruthy())
+    expect(screen.getByLabelText('Начало последней менструации')).toBeTruthy()
+    // дублирующей подсказки про вкладку «Цикл» быть не должно
+    expect(screen.queryByText(/во вкладке «Цикл»/)).toBeNull()
   })
 
   it('все разделы открываются', async () => {
     render(<App />)
-    await screen.findByText('Облегчённый режим')
+    await screen.findAllByRole('article')
 
     fireEvent.click(screen.getByRole('button', { name: 'История' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: 'История' })).toBeTruthy())
@@ -49,9 +52,97 @@ describe('экран «Сегодня»', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Цикл' })).toBeTruthy())
     await waitFor(() => expect(screen.getByText('Менструация началась сегодня')).toBeTruthy())
     expect(screen.getByText('Резервная копия')).toBeTruthy()
+    // кольцо цикла и настройки шагов прогрессии — только во вкладке «Цикл»
+    expect(screen.getByRole('img', { name: /День цикла 6 из 28/ })).toBeTruthy()
+    expect(screen.getByText('Настройки прогрессии')).toBeTruthy()
+    const step = screen.getByLabelText('Шаг прибавки, Приседания со штангой') as HTMLInputElement
+    expect(step.value).toBe('2.5')
+  })
+})
 
-    fireEvent.click(screen.getByRole('button', { name: 'Техника' }))
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Техника и правила' })).toBeTruthy())
-    expect(screen.getByText('Запас повторений (RIR)')).toBeTruthy()
+describe('цикл скрыт на основных экранах', () => {
+  it('на «Сегодня» нет фазы, дня цикла и режима', async () => {
+    render(<App />)
+    await screen.findAllByRole('article')
+    await waitFor(() => expect(screen.getAllByText(/Цель:/).length).toBeGreaterThan(0))
+
+    for (const t of PHASE_TEXTS) expect(screen.queryByText(t)).toBeNull()
+    expect(screen.queryByText(/День \d+ из/)).toBeNull()
+    expect(screen.queryByText(/окно прогресса/i)).toBeNull()
+    expect(screen.queryByText(/Поддержка/)).toBeNull()
+    expect(screen.queryByText(/Облегчённый режим/)).toBeNull()
+    // строки цикла с раскрывашкой нет
+    expect(screen.queryByRole('button', { expanded: false })).toBeNull()
+  })
+
+  it('в «Истории» нет чипа «день N · фаза» и подписи про цвет точки', async () => {
+    await db.sessions.put({
+      id: 's1',
+      date: today,
+      ts: Date.now(),
+      type: 'A',
+      cycleDay: 6,
+      phase: 'fol',
+      mode: 'progress',
+      feel: 'ok',
+      note: '',
+      ex: { squat: [{ w: 40, r: 8 }] },
+    })
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'История' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'История' })).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/Приседания со штангой/)).toBeTruthy())
+
+    for (const t of PHASE_TEXTS) expect(screen.queryByText(t)).toBeNull()
+    expect(screen.queryByText(/день \d+ ·/i)).toBeNull()
+    expect(screen.queryByText(/Цвет точки/)).toBeNull()
+  })
+})
+
+describe('вкладка «Техника» удалена', () => {
+  it('в панели её нет', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Сегодня' })
+    expect(screen.queryByRole('button', { name: 'Техника' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: /^(Сегодня|История|Цикл)$/ })).toHaveLength(3)
+  })
+
+  it('старый адрес #/tech открывает «Сегодня»', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Сегодня' })
+    window.location.hash = '#/tech'
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Сегодня' })).toBeTruthy())
+    expect(screen.queryByRole('heading', { name: 'Техника и правила' })).toBeNull()
+  })
+})
+
+describe('режим цикла влияет только на текст рекомендации', () => {
+  it('«Плохо» — облегчённая рекомендация, без названий фаз', async () => {
+    render(<App />)
+    await screen.findAllByRole('article')
+    fireEvent.click(screen.getByRole('button', { name: 'Плохо' }))
+    await waitFor(() => expect(screen.getAllByText(/Облегчённый день:/).length).toBeGreaterThan(0))
+    for (const t of PHASE_TEXTS) expect(screen.queryByText(t)).toBeNull()
+  })
+
+  it('цель повторений видна в placeholder и в строке цели', async () => {
+    const base = { date: today, type: 'A' as const, cycleDay: 6, phase: 'fol' as const, mode: 'progress' as const, feel: 'ok' as const, note: '' }
+    const rows = [
+      { id: 's1', ts: 1, ex: { squat: [{ w: 40, r: 3 }, { w: 40, r: 3 }, { w: 40, r: 3 }] } },
+      { id: 's2', ts: 2, ex: { squat: [{ w: 40, r: 4 }, { w: 40, r: 4 }, { w: 40, r: 4 }] } },
+      { id: 's3', ts: 3, ex: { squat: [{ w: 40, r: 5 }, { w: 40, r: 4 }, { w: 40, r: 3 }] } },
+      { id: 's4', ts: 4, ex: { squat: [{ w: 40, r: 6 }, { w: 40, r: 5 }, { w: 40, r: 4 }] } },
+    ]
+    for (const r of rows) await db.sessions.put({ ...base, ...r })
+
+    render(<App />)
+    await screen.findAllByRole('article')
+    fireEvent.click(screen.getByRole('button', { name: /Тренировка А/ }))
+
+    const reps = screen.getAllByLabelText('Подход 1, повторения')
+    expect(reps[0].getAttribute('placeholder')).toBe('цель 7')
+    expect(screen.getAllByLabelText('Подход 2, повторения')[0].getAttribute('placeholder')).toBe('цель 6')
+    expect(screen.getAllByLabelText('Подход 3, повторения')[0].getAttribute('placeholder')).toBe('цель 5')
+    expect(screen.getByText(/Цель: 40 кг × 7 · 6 · 5/)).toBeTruthy()
   })
 })
